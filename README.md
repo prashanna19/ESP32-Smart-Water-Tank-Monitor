@@ -7,15 +7,15 @@ An IoT-based water tank monitoring system using ESP32, FreeRTOS, MQTT and Node-R
 
 # The dashboard displays:
 
-Live water level in centimetres
+- Live water level in centimetres
 
-Tank fill percentage
+- Tank fill percentage
 
-Ultrasonic sensor distance
+- Ultrasonic sensor distance
 
-Tank height
+- Tank height
 
-MQTT connection status
+- MQTT connection status
 
 # Key Features
 
