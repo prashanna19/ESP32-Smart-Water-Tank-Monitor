@@ -5,6 +5,31 @@ An IoT-based water tank monitoring system using ESP32, FreeRTOS, MQTT and Node-R
 # Website Mock Image
 <img width="1181" height="627" alt="Pasted 21-11-2026 at 18 09 11" src="https://github.com/user-attachments/assets/3c9fa662-11ef-4306-bb0f-73617e64210f" />
 
+# The dashboard displays:
+
+Live water level in centimetres
+
+Tank fill percentage
+
+Ultrasonic sensor distance
+
+Tank height
+
+MQTT connection status
+
+# Key Features
+
+- Real-time monitoring: Measures the distance between the ultrasonic sensor and the water surface.
+
+- Automatic water-level calculation: Converts sensor distance into water height and fill percentage.
+
+- FreeRTOS multitasking: Separates Wi-Fi connectivity, sensor readings, and MQTT communication into independent tasks.
+
+- MQTT communication: Publishes sensor readings using the water/data topic.
+
+- Web-based dashboard: Displays live measurements through an interactive browser interface.
+
+- Five-minute prediction: Node-RED uses recent water-level readings and linear regression to estimate the water level five minutes ahead.
 
 ## Features
 
