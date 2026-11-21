@@ -1,0 +1,196 @@
+[
+  {
+    "id": "wtp_tab",
+    "type": "tab",
+    "label": "Water Tank Live + Prediction",
+    "disabled": false,
+    "info": "ESP32 + HC-SR04. Tank height is configured as 27 cm."
+  },
+  {
+    "id": "wtp_mqtt",
+    "type": "mqtt in",
+    "z": "wtp_tab",
+    "name": "ESP32 water/data",
+    "topic": "water/data",
+    "qos": "0",
+    "datatype": "auto",
+    "broker": "wtp_broker",
+    "nl": false,
+    "rap": true,
+    "rh": 0,
+    "inputs": 0,
+    "x": 160,
+    "y": 120,
+    "wires": [
+      [
+        "wtp_calc"
+      ]
+    ]
+  },
+  {
+    "id": "wtp_calc",
+    "type": "function",
+    "z": "wtp_tab",
+    "name": "Calculate live + 5-min prediction",
+    "func": "const TANK_CM = 27;\nconst WINDOW_MS = 300000;\nconst FORECAST_MS = 300000;\n\nlet p = msg.payload;\nif (Buffer.isBuffer(p)) p = p.toString();\nif (typeof p === \"string\") {\n    try { p = JSON.parse(p); }\n    catch (e) { p = Number(p); }\n}\n\nlet distance;\nif (typeof p === \"number\") distance = p;\nelse if (p && typeof p === \"object\") {\n    distance = Number(p.distance ?? p.distanceCm ?? p.dist ?? p.Distance);\n}\n\nif (!Number.isFinite(distance) || distance < 0 || distance > 400) return null;\n\nconst waterLevel = Math.max(0, Math.min(TANK_CM, TANK_CM - distance));\nconst fillPercent = (waterLevel / TANK_CM) * 100;\nconst now = Date.now();\n\nlet history = context.get(\"history\") || [];\nhistory.push({ t: now, y: waterLevel });\nhistory = history.filter(v => now - v.t <= WINDOW_MS);\ncontext.set(\"history\", history);\n\nlet predictedLevel = waterLevel;\nif (history.length >= 2) {\n    const meanT = history.reduce((sum, v) => sum + v.t, 0) / history.length;\n    const meanY = history.reduce((sum, v) => sum + v.y, 0) / history.length;\n    let numerator = 0;\n    let denominator = 0;\n\n    for (const v of history) {\n        const dx = v.t - meanT;\n        numerator += dx * (v.y - meanY);\n        denominator += dx * dx;\n    }\n\n    const slope = denominator === 0 ? 0 : numerator / denominator;\n    predictedLevel = Math.max(0, Math.min(TANK_CM, waterLevel + slope * FORECAST_MS));\n}\n\nmsg.payload = {\n    distance: Number(distance.toFixed(2)),\n    waterLevel: Number(waterLevel.toFixed(2)),\n    fillPercent: Number(fillPercent.toFixed(1)),\n    predictedLevel: Number(predictedLevel.toFixed(2)),\n    predictedPercent: Number((predictedLevel / TANK_CM * 100).toFixed(1)),\n    historyCount: history.length,\n    predictionMinutes: 5\n};\nreturn msg;",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 430,
+    "y": 120,
+    "wires": [
+      [
+        "wtp_template",
+        "wtp_debug"
+      ]
+    ]
+  },
+  {
+    "id": "wtp_debug",
+    "type": "debug",
+    "z": "wtp_tab",
+    "name": "Live and predicted payload",
+    "active": true,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": false,
+    "complete": "payload",
+    "targetType": "msg",
+    "statusVal": "",
+    "statusType": "auto",
+    "x": 730,
+    "y": 190,
+    "wires": []
+  },
+  {
+    "id": "wtp_template",
+    "type": "ui-template",
+    "z": "wtp_tab",
+    "group": "wtp_group",
+    "page": "",
+    "ui": "",
+    "name": "Animated tank + prediction",
+    "order": 1,
+    "width": "12",
+    "height": "8",
+    "head": "",
+    "format": "<template>\n  <div class=\"monitor\" v-if=\"msg && msg.payload\">\n    <h2>WATER TANK MONITOR</h2>\n    <div class=\"tank-wrap\">\n      <div class=\"tank\">\n        <div class=\"water\" :style=\"{ height: msg.payload.fillPercent + '%' }\">\n          <div class=\"wave wave-a\"></div>\n          <div class=\"wave wave-b\"></div>\n        </div>\n        <div class=\"live-mark\" :style=\"{ bottom: msg.payload.fillPercent + '%' }\"></div>\n        <div class=\"pred-mark\" :style=\"{ bottom: msg.payload.predictedPercent + '%' }\"></div>\n        <div class=\"scale\"><span>100%</span><span>75%</span><span>50%</span><span>25%</span><span>0%</span></div>\n      </div>\n      <div class=\"legend\"><span><i class=\"blue\"></i> Live level</span><span><i class=\"orange\"></i> Predicted level (5 min)</span></div>\n    </div>\n    <div class=\"metrics\">\n      <div class=\"metric\"><label>LIVE WATER LEVEL</label><strong>{{ Number(msg.payload.waterLevel).toFixed(2) }} cm</strong><small>{{ Number(msg.payload.fillPercent).toFixed(1) }}% full</small></div>\n      <div class=\"metric predicted\"><label>PREDICTED IN 5 MIN</label><strong>{{ Number(msg.payload.predictedLevel).toFixed(2) }} cm</strong><small>{{ Number(msg.payload.predictedPercent).toFixed(1) }}% predicted</small></div>\n      <div class=\"metric\"><label>SENSOR DISTANCE</label><strong>{{ Number(msg.payload.distance).toFixed(2) }} cm</strong><small>Tank height: 27 cm</small></div>\n    </div>\n    <p class=\"note\">Linear regression from recent readings · samples: {{ msg.payload.historyCount }}</p>\n  </div>\n</template>\n<style>\n.monitor{box-sizing:border-box;background:#101827;color:#edf7ff;padding:14px;border-radius:15px;font-family:Arial,sans-serif;min-height:500px}\nh2{text-align:center;letter-spacing:1.8px;font-size:20px;margin:8px 0 20px}\n.tank-wrap{display:flex;align-items:center;flex-direction:column;margin:12px 0 22px}\n.tank{position:relative;width:190px;height:290px;border:5px solid #a8c2d7;border-top:8px solid #d9eaf5;border-radius:18px 18px 24px 24px;background:#162438;box-shadow:inset 0 0 20px #0008;overflow:visible}\n.water{position:absolute;bottom:0;left:0;right:0;background:linear-gradient(180deg,#43c5fa,#0874c7);overflow:hidden;border-radius:0 0 18px 18px;transition:height .65s ease}\n.wave{position:absolute;top:-12px;left:-50%;width:200%;height:25px;border-radius:45%;background:rgba(210,248,255,.5);animation:wave 4s linear infinite}\n.wave-b{top:-7px;background:rgba(255,255,255,.23);animation-duration:6s;animation-direction:reverse}\n@keyframes wave{from{transform:translateX(0) rotate(0deg)}to{transform:translateX(25%) rotate(360deg)}}\n.live-mark,.pred-mark{position:absolute;left:-6px;right:-6px;z-index:3;pointer-events:none}\n.live-mark{border-top:2px solid white}\n.pred-mark{border-top:3px dashed #ffae35}\n.scale{position:absolute;left:-48px;top:0;bottom:0;display:flex;flex-direction:column;justify-content:space-between;color:#b7ccdc;font-size:11px}\n.legend{display:flex;gap:18px;flex-wrap:wrap;justify-content:center;font-size:12px;color:#d2e5f3;margin-top:14px}\n.legend i{display:inline-block;width:18px;margin-right:5px;vertical-align:middle}\n.blue{border-top:3px solid #fff}.orange{border-top:3px dashed #ffae35}\n.metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}\n.metric{min-width:0;background:#1b2a3e;border:1px solid #3a5068;border-radius:12px;padding:13px 8px;text-align:center;display:flex;flex-direction:column;gap:7px}\n.metric.predicted{border-color:#d99a35}\n.metric label{font-size:10px;letter-spacing:.8px;color:#b4c9dc;min-height:24px}\n.metric strong{font-size:23px;color:white}.metric small{font-size:12px;color:#8cddff}\n.note{text-align:center;color:#a6bdd0;font-size:11px;margin-top:15px}\n@media(max-width:520px){.metrics{grid-template-columns:1fr}.metric strong{font-size:21px}}\n</style>",
+    "storeOutMessages": true,
+    "passthru": true,
+    "templateScope": "local",
+    "className": "",
+    "x": 720,
+    "y": 120,
+    "wires": [
+      []
+    ]
+  },
+  {
+    "id": "wtp_page",
+    "type": "ui-page",
+    "name": "Tank Live + Prediction",
+    "ui": "wtp_base",
+    "path": "tank-live-prediction",
+    "icon": "dashboard",
+    "layout": "grid",
+    "theme": "wtp_theme",
+    "breakpoints": [
+      {
+        "name": "Default",
+        "px": "0",
+        "cols": "12"
+      },
+      {
+        "name": "Tablet",
+        "px": "640",
+        "cols": "12"
+      },
+      {
+        "name": "Desktop",
+        "px": "1024",
+        "cols": "12"
+      }
+    ],
+    "order": 1
+  },
+  {
+    "id": "wtp_group",
+    "type": "ui-group",
+    "name": "Tank Monitoring",
+    "page": "wtp_page",
+    "width": "12",
+    "height": "8",
+    "order": 1,
+    "showTitle": false
+  },
+  {
+    "id": "wtp_base",
+    "type": "ui-base",
+    "name": "Water Tank Dashboard",
+    "path": "/dashboard",
+    "appIcon": "",
+    "includeClientData": true,
+    "acceptsClientConfig": [
+      "ui-notification",
+      "ui-control"
+    ],
+    "showPathInSidebar": false,
+    "headerContent": "page",
+    "navigationStyle": "default",
+    "titleBarStyle": "default",
+    "showReconnectNotification": true,
+    "notificationDisplayTime": 1,
+    "showDisconnectNotification": true,
+    "allowInstall": false
+  },
+  {
+    "id": "wtp_theme",
+    "type": "ui-theme",
+    "name": "Water Tank Dark Theme",
+    "colors": {
+      "surface": "#101827",
+      "primary": "#0875c9",
+      "bgPage": "#101827",
+      "groupBg": "#101827",
+      "groupOutline": "#34465c"
+    },
+    "sizes": {
+      "density": "default",
+      "pagePadding": "12px",
+      "groupGap": "12px",
+      "groupBorderRadius": "12px",
+      "widgetGap": "12px"
+    }
+  },
+  {
+    "id": "wtp_broker",
+    "type": "mqtt-broker",
+    "name": "Mosquitto local Mac",
+    "broker": "127.0.0.1",
+    "port": "1883",
+    "clientid": "",
+    "autoConnect": true,
+    "usetls": false,
+    "protocolVersion": "4",
+    "keepalive": "60",
+    "cleansession": true,
+    "autoUnsubscribe": true,
+    "birthTopic": "",
+    "birthQos": "0",
+    "birthPayload": "",
+    "birthMsg": {},
+    "closeTopic": "",
+    "closeQos": "0",
+    "closePayload": "",
+    "closeMsg": {},
+    "willTopic": "",
+    "willQos": "0",
+    "willPayload": "",
+    "willMsg": {},
+    "userProps": "",
+    "sessionExpiry": ""
+  }
+]

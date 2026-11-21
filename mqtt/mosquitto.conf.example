@@ -1,0 +1,12 @@
+# Example Mosquitto configuration
+# For a trusted local demonstration network only.
+# Do not expose anonymous MQTT access to the public internet.
+
+# MQTT over TCP
+listener 1883 0.0.0.0
+allow_anonymous true
+
+# MQTT over WebSockets
+listener 9001
+protocol websockets
+allow_anonymous true
